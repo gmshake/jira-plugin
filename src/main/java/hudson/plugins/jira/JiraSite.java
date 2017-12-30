@@ -6,6 +6,12 @@ import com.atlassian.jira.rest.client.api.domain.Issue;
 import com.atlassian.jira.rest.client.api.domain.Version;
 import com.atlassian.jira.rest.client.internal.async.AsynchronousJiraRestClientFactory;
 import com.cloudbees.hudson.plugins.folder.AbstractFolder;
+import com.cloudbees.plugins.credentials.CredentialsMatchers;
+import com.cloudbees.plugins.credentials.CredentialsProvider;
+import com.cloudbees.plugins.credentials.common.StandardUsernameListBoxModel;
+import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
+import com.cloudbees.plugins.credentials.common.UsernamePasswordCredentials;
+import com.cloudbees.plugins.credentials.domains.DomainRequirement;
 import com.google.common.base.Objects;
 import com.google.common.base.Optional;
 import com.google.common.cache.Cache;
@@ -15,9 +21,14 @@ import hudson.Util;
 import hudson.model.*;
 import hudson.plugins.jira.model.JiraIssue;
 import hudson.plugins.jira.model.JiraVersion;
+import hudson.security.ACL;
+import hudson.security.AccessControlled;
 import hudson.util.FormValidation;
+import hudson.util.ListBoxModel;
 import hudson.util.Secret;
+import jenkins.model.Jenkins;
 import org.joda.time.DateTime;
+import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
@@ -86,13 +97,25 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
     public final boolean useHTTPAuth;
 
     /**
+     * The id of the credentials to use. Optional.
+     */
+    public final String credentialsId;
+
+    /**
+     * Transient stash of the credentials to use, mostly just for providing floating user object.
+     */
+    public final transient UsernamePasswordCredentials credentials;
+
+    /**
      * User name needed to login. Optional.
      */
+    @Deprecated
     public final String userName;
 
     /**
      * Password needed to login. Optional.
      */
+    @Deprecated
     public final Secret password;
 
     /**
@@ -174,8 +197,21 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
     private transient JiraSession jiraSession = null;
 
     @DataBoundConstructor
+    public JiraSite(URL url, @CheckForNull URL alternativeUrl, @CheckForNull String credentialsId, String userName, String password, boolean supportsWikiStyleComment, boolean recordScmChanges, @CheckForNull String userPattern,
+                    boolean updateJiraIssueForAllStatus, @CheckForNull String groupVisibility, @CheckForNull String roleVisibility, boolean useHTTPAuth) {
+        this(url, alternativeUrl, lookupSystemCredentials(credentialsId), userName, password, supportsWikiStyleComment, recordScmChanges, userPattern,
+                updateJiraIssueForAllStatus, groupVisibility, roleVisibility, useHTTPAuth);
+    }
+
+    @Deprecated
     public JiraSite(URL url, @CheckForNull URL alternativeUrl, String userName, String password, boolean supportsWikiStyleComment, boolean recordScmChanges, @CheckForNull String userPattern,
                     boolean updateJiraIssueForAllStatus, @CheckForNull String groupVisibility, @CheckForNull String roleVisibility, boolean useHTTPAuth) {
+        this(url, alternativeUrl, (StandardUsernamePasswordCredentials)null, userName, password, supportsWikiStyleComment, recordScmChanges, userPattern,
+                updateJiraIssueForAllStatus, groupVisibility, roleVisibility, useHTTPAuth);
+    }
+
+    public JiraSite(URL url, URL alternativeUrl, StandardUsernamePasswordCredentials credentials, String userName, String password, boolean supportsWikiStyleComment, boolean recordScmChanges, String userPattern,
+                    boolean updateJiraIssueForAllStatus, String groupVisibility, String roleVisibility, boolean useHTTPAuth) {
         if (url != null && !url.toExternalForm().endsWith("/"))
             try {
                 url = new URL(url.toExternalForm() + "/");
@@ -196,6 +232,8 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
         this.alternativeUrl = alternativeUrl;
         this.userName = Util.fixEmpty(userName);
         this.password = Secret.fromString(Util.fixEmpty(password));
+        this.credentials = credentials;
+        this.credentialsId = credentials != null ? credentials.getId() : null;
         this.supportsWikiStyleComment = supportsWikiStyleComment;
         this.recordScmChanges = recordScmChanges;
         this.userPattern = Util.fixEmpty(userPattern);
@@ -211,6 +249,19 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
         this.roleVisibility = Util.fixEmpty(roleVisibility);
         this.useHTTPAuth = useHTTPAuth;
         this.jiraSession = null;
+    }
+
+    @CheckForNull
+    public static StandardUsernamePasswordCredentials lookupSystemCredentials(@CheckForNull String credentialsId) {
+        if (credentialsId == null) {
+            return null;
+        }
+        return CredentialsMatchers.firstOrNull(
+                CredentialsProvider
+                        .lookupCredentials(StandardUsernamePasswordCredentials.class, Jenkins.getInstance(), ACL.SYSTEM,
+                                Collections.<DomainRequirement>emptyList()),
+                CredentialsMatchers.withId(credentialsId)
+        );
     }
 
     @DataBoundSetter
@@ -287,7 +338,7 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
      * @return null if remote access is not supported.
      */
     protected JiraSession createSession() throws IOException {
-        if (userName == null || password == null)
+        if (credentials == null && (userName == null || password == null))
             return null;    // remote access not supported
 
         final URI uri;
@@ -299,6 +350,8 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
         }
         LOGGER.fine("creating Jira Session: " + uri);
 
+        String userName = credentials != null ? credentials.getUsername() : this.userName;
+        Secret password = credentials != null ? credentials.getPassword() : this.password;
         final JiraRestClient jiraRestClient = new AsynchronousJiraRestClientFactory()
                 .createWithBasicHttpAuthentication(uri, userName, password.getPlainText());
         int usedTimeout = timeout != null ? timeout : JiraSite.DEFAULT_TIMEOUT;
@@ -772,6 +825,7 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
         public FormValidation doValidate(@QueryParameter String userName,
                                          @QueryParameter String url,
                                          @QueryParameter String password,
+                                         @QueryParameter String credentialsId,
                                          @QueryParameter String groupVisibility,
                                          @QueryParameter String roleVisibility,
                                          @QueryParameter boolean useHTTPAuth,
@@ -798,7 +852,8 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
                 return FormValidation.error(String.format("Malformed alternative URL (%s)",alternativeUrl), e );
             }
 
-            JiraSite site = new JiraSite(mainURL, alternativeURL, userName, password, false,
+            credentialsId = Util.fixEmpty(credentialsId);
+            JiraSite site = new JiraSite(mainURL, alternativeURL, credentialsId, userName, password, false,
                     false, null, false, groupVisibility, roleVisibility, useHTTPAuth);
             site.setTimeout(timeout);            
             try {
@@ -810,6 +865,24 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
             }
 
             return FormValidation.error("Failed to login to JIRA");
+        }
+
+        public ListBoxModel doFillCredentialsIdItems(@AncestorInPath ItemGroup context) {
+            AccessControlled _context = (context instanceof AccessControlled ? (AccessControlled) context : Jenkins.getInstance());
+            if (_context == null || !_context.hasPermission(Computer.CONFIGURE)) {
+                return new StandardUsernameListBoxModel();
+            }
+
+            return new StandardUsernameListBoxModel()
+                    .withEmptySelection()
+                    .withAll(
+                        CredentialsProvider.lookupCredentials(
+                            StandardUsernamePasswordCredentials.class,
+                            Jenkins.getInstance(),
+                            ACL.SYSTEM,
+                            Collections.<DomainRequirement>emptyList()
+                        )
+                    );
         }
     }
 

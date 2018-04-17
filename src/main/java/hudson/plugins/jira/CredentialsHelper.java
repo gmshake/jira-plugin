@@ -2,6 +2,8 @@ package hudson.plugins.jira;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javax.annotation.CheckForNull;
 
@@ -10,7 +12,6 @@ import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.SystemCredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
-import com.cloudbees.plugins.credentials.domains.DomainRequirement;
 import com.cloudbees.plugins.credentials.domains.URIRequirementBuilder;
 import com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl;
 import hudson.security.ACL;
@@ -24,6 +25,7 @@ import org.apache.commons.lang.StringUtils;
  * @author Zhenlei Huang
  */
 public class CredentialsHelper {
+	private static final Logger LOGGER = Logger.getLogger(CredentialsHelper.class.getName());
 
 	@CheckForNull
 	public static StandardUsernamePasswordCredentials lookupSystemCredentials(@CheckForNull String credentialsId, String url) {
@@ -31,18 +33,17 @@ public class CredentialsHelper {
 			return null;
 		}
 		return CredentialsMatchers.firstOrNull(
-				CredentialsProvider
-						.lookupCredentials(
-								StandardUsernamePasswordCredentials.class,
-								Jenkins.getInstance(),
-								ACL.SYSTEM,
-								URIRequirementBuilder.fromUri(url).build()
-						),
+				CredentialsProvider.lookupCredentials(
+						StandardUsernamePasswordCredentials.class,
+						Jenkins.getInstance(),
+						ACL.SYSTEM,
+						URIRequirementBuilder.fromUri(url).build()
+				),
 				CredentialsMatchers.withId(credentialsId)
 		);
 	}
 
-	public static StandardUsernamePasswordCredentials migrateCredentials(String username, String password) {
+	public static StandardUsernamePasswordCredentials migrateCredentials(String username, String password, String url) {
 		StandardUsernamePasswordCredentials cred = null;
 
 		List<StandardUsernamePasswordCredentials> credentials = CredentialsMatchers.filter(
@@ -50,7 +51,7 @@ public class CredentialsHelper {
 						StandardUsernamePasswordCredentials.class,
 						Jenkins.getInstance(),
 						ACL.SYSTEM,
-						(DomainRequirement)null
+						URIRequirementBuilder.fromUri(url).build()
 				),
 				CredentialsMatchers.withUsername(username)
 		);
@@ -61,6 +62,7 @@ public class CredentialsHelper {
 			}
 		}
 		if (cred == null) {
+			LOGGER.log(Level.INFO, "Migrated credentials");
 			// Create new credentials with the principal and secret if we couldn't find any existing credentials
 			StandardUsernamePasswordCredentials newCredentials = new UsernamePasswordCredentialsImpl(
 					CredentialsScope.SYSTEM,
@@ -73,7 +75,7 @@ public class CredentialsHelper {
 			try {
 				SystemCredentialsProvider.getInstance().save();
 			} catch (IOException e) {
-				e.printStackTrace();
+				LOGGER.log(Level.WARNING, "Unable to store migrated credentials", e);
 			}
 			cred = newCredentials;
 		}

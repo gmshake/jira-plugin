@@ -202,14 +202,14 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
     @DataBoundConstructor
     public JiraSite(URL url, @CheckForNull URL alternativeUrl, @CheckForNull String credentialsId, String userName, String password, boolean supportsWikiStyleComment, boolean recordScmChanges, @CheckForNull String userPattern,
                     boolean updateJiraIssueForAllStatus, @CheckForNull String groupVisibility, @CheckForNull String roleVisibility, boolean useHTTPAuth) {
-        this(url, alternativeUrl, credentialsId != null ? CredentialsHelper.lookupSystemCredentials(credentialsId, url != null ? url.toExternalForm() : null) : CredentialsHelper.migrateCredentials(userName, password), supportsWikiStyleComment, recordScmChanges, userPattern,
+        this(url, alternativeUrl, credentialsId != null ? CredentialsHelper.lookupSystemCredentials(credentialsId, url != null ? url.toExternalForm() : null) : CredentialsHelper.migrateCredentials(userName, password, url != null ? url.toExternalForm() : null), supportsWikiStyleComment, recordScmChanges, userPattern,
                 updateJiraIssueForAllStatus, groupVisibility, roleVisibility, useHTTPAuth);
     }
 
     @Deprecated
     public JiraSite(URL url, @CheckForNull URL alternativeUrl, String userName, String password, boolean supportsWikiStyleComment, boolean recordScmChanges, @CheckForNull String userPattern,
                     boolean updateJiraIssueForAllStatus, @CheckForNull String groupVisibility, @CheckForNull String roleVisibility, boolean useHTTPAuth) {
-        this(url, alternativeUrl, CredentialsHelper.migrateCredentials(userName, password), supportsWikiStyleComment, recordScmChanges, userPattern,
+        this(url, alternativeUrl, CredentialsHelper.migrateCredentials(userName, password, url != null ? url.toExternalForm() : null), supportsWikiStyleComment, recordScmChanges, userPattern,
                 updateJiraIssueForAllStatus, groupVisibility, roleVisibility, useHTTPAuth);
     }
 
@@ -298,7 +298,7 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
             StandardUsernamePasswordCredentials credentials = CredentialsHelper.lookupSystemCredentials(credentialsId, url != null ? url.toExternalForm() : null);
             setCredentials(credentials);
         } else if (userName != null && password != null) { // Migrate credentials
-            StandardUsernamePasswordCredentials credentials = CredentialsHelper.migrateCredentials(userName, password.getPlainText());
+            StandardUsernamePasswordCredentials credentials = CredentialsHelper.migrateCredentials(userName, password.getPlainText(), url != null ? url.toExternalForm() : null);
             setCredentials(credentials);
             setCredentialsId(credentials.getId());
         }

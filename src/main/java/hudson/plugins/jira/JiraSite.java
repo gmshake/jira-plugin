@@ -106,18 +106,6 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
     public final transient UsernamePasswordCredentials credentials;
 
     /**
-     * User name needed to login. Optional.
-     */
-    @Deprecated
-    public final String userName;
-
-    /**
-     * Password needed to login. Optional.
-     */
-    @Deprecated
-    public final Secret password;
-
-    /**
      * Group visibility to constrain the visibility of the added comment. Optional.
      */
     public final String groupVisibility;
@@ -198,18 +186,18 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
     @DataBoundConstructor
     public JiraSite(URL url, @CheckForNull URL alternativeUrl, @CheckForNull String credentialsId, String userName, String password, boolean supportsWikiStyleComment, boolean recordScmChanges, @CheckForNull String userPattern,
                     boolean updateJiraIssueForAllStatus, @CheckForNull String groupVisibility, @CheckForNull String roleVisibility, boolean useHTTPAuth) {
-        this(url, alternativeUrl, CredentialsHelper.lookupSystemCredentials(credentialsId, url != null ? url.toExternalForm() : null), userName, password, supportsWikiStyleComment, recordScmChanges, userPattern,
+        this(url, alternativeUrl, credentialsId != null ? CredentialsHelper.lookupSystemCredentials(credentialsId, url != null ? url.toExternalForm() : null) : CredentialsHelper.migrateCredentials(userName, password), supportsWikiStyleComment, recordScmChanges, userPattern,
                 updateJiraIssueForAllStatus, groupVisibility, roleVisibility, useHTTPAuth);
     }
 
     @Deprecated
     public JiraSite(URL url, @CheckForNull URL alternativeUrl, String userName, String password, boolean supportsWikiStyleComment, boolean recordScmChanges, @CheckForNull String userPattern,
                     boolean updateJiraIssueForAllStatus, @CheckForNull String groupVisibility, @CheckForNull String roleVisibility, boolean useHTTPAuth) {
-        this(url, alternativeUrl, (StandardUsernamePasswordCredentials)null, userName, password, supportsWikiStyleComment, recordScmChanges, userPattern,
+        this(url, alternativeUrl, CredentialsHelper.migrateCredentials(userName, password), supportsWikiStyleComment, recordScmChanges, userPattern,
                 updateJiraIssueForAllStatus, groupVisibility, roleVisibility, useHTTPAuth);
     }
 
-    public JiraSite(URL url, URL alternativeUrl, StandardUsernamePasswordCredentials credentials, String userName, String password, boolean supportsWikiStyleComment, boolean recordScmChanges, String userPattern,
+    public JiraSite(URL url, URL alternativeUrl, StandardUsernamePasswordCredentials credentials, boolean supportsWikiStyleComment, boolean recordScmChanges, String userPattern,
                     boolean updateJiraIssueForAllStatus, String groupVisibility, String roleVisibility, boolean useHTTPAuth) {
         if (url != null && !url.toExternalForm().endsWith("/"))
             try {
@@ -229,8 +217,6 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
     	this.timeout = JiraSite.DEFAULT_TIMEOUT;
         
         this.alternativeUrl = alternativeUrl;
-        this.userName = Util.fixEmpty(userName);
-        this.password = Secret.fromString(Util.fixEmpty(password));
         this.credentials = credentials;
         this.credentialsId = credentials != null ? credentials.getId() : null;
         this.supportsWikiStyleComment = supportsWikiStyleComment;
@@ -324,7 +310,7 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
      * @return null if remote access is not supported.
      */
     protected JiraSession createSession() throws IOException {
-        if (credentials == null && (userName == null || password == null))
+        if (credentials == null)
             return null;    // remote access not supported
 
         final URI uri;
@@ -336,8 +322,8 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
         }
         LOGGER.fine("creating Jira Session: " + uri);
 
-        String userName = credentials != null ? credentials.getUsername() : this.userName;
-        Secret password = credentials != null ? credentials.getPassword() : this.password;
+        String userName = credentials.getUsername();
+        Secret password = credentials.getPassword();
         final JiraRestClient jiraRestClient = new AsynchronousJiraRestClientFactory()
                 .createWithBasicHttpAuthentication(uri, userName, password.getPlainText());
         int usedTimeout = timeout != null ? timeout : JiraSite.DEFAULT_TIMEOUT;
@@ -808,9 +794,7 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
         /**
          * Checks if the user name and password are valid.
          */
-        public FormValidation doValidate(@QueryParameter String userName,
-                                         @QueryParameter String url,
-                                         @QueryParameter String password,
+        public FormValidation doValidate(@QueryParameter String url,
                                          @QueryParameter String credentialsId,
                                          @QueryParameter String groupVisibility,
                                          @QueryParameter String roleVisibility,
@@ -839,7 +823,7 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
             }
 
             credentialsId = Util.fixEmpty(credentialsId);
-            JiraSite site = new JiraSite(mainURL, alternativeURL, credentialsId, userName, password, false,
+            JiraSite site = new JiraSite(mainURL, alternativeURL, CredentialsHelper.lookupSystemCredentials(credentialsId, mainURL.toExternalForm()), false,
                     false, null, false, groupVisibility, roleVisibility, useHTTPAuth);
             site.setTimeout(timeout);            
             try {

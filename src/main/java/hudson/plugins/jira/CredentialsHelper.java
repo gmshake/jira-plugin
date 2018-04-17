@@ -1,5 +1,6 @@
 package hudson.plugins.jira;
 
+import java.io.IOException;
 import java.util.List;
 
 import javax.annotation.CheckForNull;
@@ -69,6 +70,11 @@ public class CredentialsHelper {
 					password
 			);
 			SystemCredentialsProvider.getInstance().getCredentials().add(newCredentials);
+			try {
+				SystemCredentialsProvider.getInstance().save();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 			cred = newCredentials;
 		}
 		return cred;

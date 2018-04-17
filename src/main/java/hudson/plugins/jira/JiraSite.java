@@ -26,6 +26,7 @@ import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
 import hudson.util.Secret;
 import jenkins.model.Jenkins;
+import org.apache.commons.lang.StringUtils;
 import org.joda.time.DateTime;
 import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
@@ -36,6 +37,7 @@ import javax.annotation.CheckForNull;
 import javax.annotation.Nullable;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.lang.reflect.Field;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -104,6 +106,20 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
      * Transient stash of the credentials to use, mostly just for providing floating user object.
      */
     public final transient UsernamePasswordCredentials credentials;
+
+    /**
+     * User name needed to login. Optional.
+     * @deprecated use credentialsId
+     */
+    @Deprecated
+    private transient String userName;
+
+    /**
+     * Password needed to login. Optional.
+     * @deprecated use credentialsId
+     */
+    @Deprecated
+    private transient Secret password;
 
     /**
      * Group visibility to constrain the visibility of the added comment. Optional.
@@ -277,6 +293,26 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
         projectUpdateLock = new ReentrantLock();
         issueCache = makeIssueCache();
         jiraSession = null;
+
+        // Migrate credentials
+        if (StringUtils.isBlank(credentialsId) && userName != null && password != null) {
+            StandardUsernamePasswordCredentials credentials = CredentialsHelper.migrateCredentials(userName, password.getPlainText());
+            try {
+                Field f = this.getClass().getDeclaredField("credentials");
+                f.setAccessible(true);
+                f.set(this, credentials);
+            } catch (NoSuchFieldException | IllegalAccessException e) {
+                throw new IllegalStateException(e);
+            }
+            try {
+                Field f = this.getClass().getDeclaredField("credentialsId");
+                f.setAccessible(true);
+                f.set(this, credentials.getId());
+            } catch (NoSuchFieldException | IllegalAccessException e) {
+                throw new IllegalStateException(e);
+            }
+
+        }
         return this;
     }
 

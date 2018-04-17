@@ -294,26 +294,35 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
         issueCache = makeIssueCache();
         jiraSession = null;
 
-        // Migrate credentials
-        if (StringUtils.isBlank(credentialsId) && userName != null && password != null) {
+        if (StringUtils.isNotBlank(credentialsId)) {
+            StandardUsernamePasswordCredentials credentials = CredentialsHelper.lookupSystemCredentials(credentialsId, url != null ? url.toExternalForm() : null);
+            setCredentials(credentials);
+        } else if (userName != null && password != null) { // Migrate credentials
             StandardUsernamePasswordCredentials credentials = CredentialsHelper.migrateCredentials(userName, password.getPlainText());
-            try {
-                Field f = this.getClass().getDeclaredField("credentials");
-                f.setAccessible(true);
-                f.set(this, credentials);
-            } catch (NoSuchFieldException | IllegalAccessException e) {
-                throw new IllegalStateException(e);
-            }
-            try {
-                Field f = this.getClass().getDeclaredField("credentialsId");
-                f.setAccessible(true);
-                f.set(this, credentials.getId());
-            } catch (NoSuchFieldException | IllegalAccessException e) {
-                throw new IllegalStateException(e);
-            }
-
+            setCredentials(credentials);
+            setCredentialsId(credentials.getId());
         }
         return this;
+    }
+
+    private void setCredentialsId(String credentialsId) {
+        try {
+            Field f = this.getClass().getDeclaredField("credentialsId");
+            f.setAccessible(true);
+            f.set(this, credentialsId);
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private void setCredentials(StandardUsernamePasswordCredentials credentials) {
+        try {
+            Field f = this.getClass().getDeclaredField("credentials");
+            f.setAccessible(true);
+            f.set(this, credentials);
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private static Cache<String, Optional<Issue>> makeIssueCache() {

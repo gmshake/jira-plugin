@@ -14,7 +14,7 @@ public class JiraSite2Test {
     @Test
     public void testClientInitialization() throws Exception {
         JiraSite site = new JiraSite(new URL("https://nonexistent.url"), null,
-                "user", "password",
+                null,
                 false, false,
                 null, false, null,
                 null, true);

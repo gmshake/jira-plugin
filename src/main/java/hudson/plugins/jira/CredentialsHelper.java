@@ -62,7 +62,6 @@ public class CredentialsHelper {
 			}
 		}
 		if (cred == null) {
-			LOGGER.log(Level.INFO, "Migrated credentials");
 			// Create new credentials with the principal and secret if we couldn't find any existing credentials
 			StandardUsernamePasswordCredentials newCredentials = new UsernamePasswordCredentialsImpl(
 					CredentialsScope.SYSTEM,
@@ -74,6 +73,7 @@ public class CredentialsHelper {
 			SystemCredentialsProvider.getInstance().getCredentials().add(newCredentials);
 			try {
 				SystemCredentialsProvider.getInstance().save();
+				LOGGER.log(Level.INFO, "Migrated credentials");
 			} catch (IOException e) {
 				LOGGER.log(Level.WARNING, "Unable to store migrated credentials", e);
 			}

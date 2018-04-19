@@ -294,6 +294,7 @@ public class JiraSite extends AbstractDescribableImpl<JiraSite> {
         issueCache = makeIssueCache();
         jiraSession = null;
 
+        // HACK, update final fields via reflection, see jls 17.5.3, https://docs.oracle.com/javase/specs/jls/se7/html/jls-17.html#jls-17.5.3
         if (StringUtils.isNotBlank(credentialsId)) {
             StandardUsernamePasswordCredentials credentials = CredentialsHelper.lookupSystemCredentials(credentialsId, url != null ? url.toExternalForm() : null);
             setCredentials(credentials);
